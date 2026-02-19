@@ -15,7 +15,7 @@ class MessageType(str, Enum):
 class TaskStatus(str, Enum):
     """Task status values."""
     EXECUTING = "executing"
-    SUCCESS = "successed"
+    SUCCESS = "success"
     FAILED = "failed"
 
 @dataclass
@@ -82,6 +82,10 @@ class TaskResponse(Message):
     """Task response message."""
     status: TaskStatus = TaskStatus.EXECUTING
     output: str = ""
+    
+    def __post_init__(self):
+        """Set the message type to STATUS after initialization."""
+        self.type = MessageType.STATUS
     
     def to_dict(self) -> dict:
         """Convert to dictionary."""

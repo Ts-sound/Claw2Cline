@@ -34,7 +34,7 @@ def test_task_response():
     assert resp.output == "result"
 
 def test_create_task_request():
-    req = req = TaskRequest(command="test", session="default")
+    req = TaskRequest(command="test", session="default")
     assert req.command == "test"
     assert req.session == "default"
 

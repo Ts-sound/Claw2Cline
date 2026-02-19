@@ -13,6 +13,10 @@
     "doxdocgen.file.copyrightTag": [
         "tong Copyright (c) {year}"
     ],
+    "black-formatter.args": [
+        "--line-length",
+        "300"
+    ],
     "files.autoSave": "onFocusChange",
     "editor.formatOnSave": true,
     "xml.format.maxLineWidth": 0,
@@ -60,5 +64,11 @@
     ],
     "mermaid-editor.generate.quality": 1024,
     "mermaid-editor.generate.scale": 1,
-    "mermaid-editor.generate.type": "svg"
+    "mermaid-editor.generate.type": "svg",
+    "python.testing.pytestArgs": [
+        "test"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "svn.ignoreMissingSvnWarning": true
 }

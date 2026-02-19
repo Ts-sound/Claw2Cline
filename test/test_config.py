@@ -45,6 +45,7 @@ def test_ensure_cache_dir():
         test_config.ensure_cache_dir()
         assert test_dir.exists()
     finally:
-        # Clean up
+        # Clean up - remove directory and all contents
+        import shutil
         if test_dir.exists():
-            test_dir.rmdir()
+            shutil.rmtree(test_dir)

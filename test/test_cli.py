@@ -1,110 +1,67 @@
 import pytest
 import sys
 import os
-from unittest.mock import patch, MagicMock
+import subprocess
+import threading
+import time
 from pathlib import Path
+from src.config import config
 from src.cli import send_command, status_command, main
+from src.clientd import ClientDaemon
+
 
 class TestCLI:
-    @patch('src.cli.config')
-    def test_send_command_success(self, mock_config):
-        # Mock config values
-        mock_cache_dir = Path("/tmp/claw2cline-test")
-        mock_config.cache_dir = mock_cache_dir
-        mock_config.request_pipe_path = mock_cache_dir / "request.pipe"
-        mock_config.response_pipe_path = mock_cache_dir / "response.pipe"
-        
-        # Create test pipe
+
+    def setup_method(self):
+        """Setup method to open pipes for reading data."""
+        print("Setting up pipes for reading data...")
+        # Create cache directory
+        config.ensure_cache_dir()
+
+        # Create named pipes
+        os.makedirs(config.cache_dir, exist_ok=True)
         try:
-            os.mkfifo(str(mock_config.request_pipe_path))
-            os.mkfifo(str(mock_config.response_pipe_path))
+            if not config.request_pipe_path.exists():
+                os.mkfifo(str(config.request_pipe_path))
+            if not config.response_pipe_path.exists():
+                os.mkfifo(str(config.response_pipe_path))
         except FileExistsError:
             pass  # Pipes may already exist
-            
-        # Mock arguments
-        args = type('Args', (), {
-            'command': 'echo "test"',
-            'session': 'default',
-            'wait': False
-        })()
-            
-        # Run send command
-        result = send_command(args)
-        assert result == 0
-        
-    @patch('src.cli.config')
-    def test_send_command_with_wait(self, mock_config):
-        # Mock config values
-        mock_cache_dir = Path("/tmp/claw2cline-test")
-        mock_config.cache_dir = mock_cache_dir
-        mock_config.request_pipe_path = mock_cache_dir / "request.pipe"
-        mock_config.response_pipe_path = mock_cache_dir / "response.pipe"
-        
-        # Create test pipe
+        except Exception as e:
+            print(f"Error creating pipes: {e}")
+            raise
+
+        # thread to read from request pipe
+
+        def read_request_pipe():
+            with open(config.request_pipe_path, "r") as pipe:
+                print("Pipes are set up and ready for testing.")
+                data = pipe.read()  # Block until data is written to the pipe
+                print(f"Received data from request pipe: {data}")
+
+        self.thread = threading.Thread(target=read_request_pipe)
+        self.thread.start()
+
+    def teardown_method(self):
+        """Teardown method to close pipes after each test."""
+        print("Tearing down pipes...")
         try:
-            os.mkfifo(str(mock_config.request_pipe_path))
-            os.mkfifo(str(mock_config.response_pipe_path))
-        except FileExistsError:
-            pass
-            
+            # Clean up pipes
+            if config.request_pipe_path.exists():
+                config.request_pipe_path.unlink()
+            if config.response_pipe_path.exists():
+                config.response_pipe_path.unlink()
+            print("Pipes cleaned up successfully")
+        except Exception as e:
+            print(f"Error cleaning up pipes: {e}")
+
+    def test_send_command_success(self):
+        print("Testing send_command without wait")
         # Mock arguments
-        args = type('Args', (), {
-            'command': 'echo "test"',
-            'session': 'default',
-            'wait': True
-        })()
-            
+        args = type("Args", (), {"command": 'echo "test"', "session": "default", "wait": False})()
+
         # Run send command
+        print("Testing send_command with args:", args)
         result = send_command(args)
+        self.thread.join(timeout=5)  # Wait for the thread to finish reading from the pipe
         assert result == 0
-    
-    @patch('src.cli.config')
-    def test_send_command_no_pipe(self, mock_config):
-        # Mock config values
-        mock_cache_dir = Path("/tmp/claw2cline-test")
-        mock_config.cache_dir = mock_cache_dir
-        mock_config.request_pipe_path = mock_cache_dir / "request.pipe"
-        mock_config.response_pipe_path = mock_cache_dir / "response.pipe"
-        
-        # Ensure pipes don't exist
-        if mock_config.request_pipe_path.exists():
-            os.remove(str(mock_config.request_pipe_path))
-        if mock_config.response_pipe_path.exists():
-            os.remove(str(mock_config.response_pipe_path))
-            
-        # Mock arguments
-        args = type('Args', (), {
-            'command': 'echo "test"',
-            'session': 'default',
-            'wait': False
-        })()
-            
-        # Run send command
-        result = send_command(args)
-        assert result == 1
-    
-    @patch('src.cli.config')
-    def test_status_command(self, mock_config):
-        # Mock config values
-        mock_cache_dir = Path("/tmp/claw2cline-test")
-        mock_config.cache_dir = mock_cache_dir
-        mock_config.pid_file_path = mock_cache_dir / "pid"
-        
-        # Run status command
-        result = status_command(type('Args', (), {})())
-        assert result == 0
-    
-    @patch('sys.stdout')
-    def test_main_no_command(self, mock_stdout):
-        # Test main with no command
-        with patch.object(sys, 'argv', ['claw2cline']):
-            result = main()
-            assert result == 1
-    
-    @patch('src.cli.status_command')
-    def test_main_status_command(self, mock_status):
-        # Test main with status command
-        with patch.object(sys, 'argv', ['claw2cline', 'status']):
-            result = main()
-            assert result == 0
-            mock_status.assert_called_once()

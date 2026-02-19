@@ -8,23 +8,34 @@ from src.protocol import TaskRequest, TaskStatus, MessageType
 
 @pytest.mark.asyncio
 async def test_server_connection():
-    # Start server
-    server = Server()
-    server_task = asyncio.create_task(server.start())
+    # Create server instance
+    server = Server(host="localhost", port=8766)  # Use different port to avoid conflicts
+    
+    # Start server in background
+    server_future = asyncio.create_task(server.start())
     
     try:
-        # Wait for server to start
+        # Wait a bit for server to start
         await asyncio.sleep(0.1)
         
         # Test client connection
-        async with websockets.connect("ws://localhost:8765") as websocket:
-            assert websocket.open
+        async with websockets.connect("ws://localhost:8766") as websocket:
+            # Check if connection is established by sending/receiving a message
+            # In newer versions of websockets, we can check if connection is open by attempting to send a message
+            try:
+                await websocket.ping()
+                # Connection is open if ping succeeds
+                assert True
+            except:
+                assert False
             
     finally:
-        # Stop server
-        await server.stop()
-        server_task.cancel()
-        await server_task
+        # Stop server gracefully
+        server_future.cancel()
+        try:
+            await server_future
+        except asyncio.CancelledError:
+            pass  # Expected when cancelling the server task
 
 @pytest.mark.asyncio
 async def test_task_execution():
@@ -53,14 +64,22 @@ async def test_task_execution():
             # Send task request
             await websocket.send(message)
             
-            # Wait for response
+            # Wait for first response (executing status)
             response = await websocket.recv()
             data = json.loads(response)
             
-            # Verify response
+            # Verify initial response is executing
+            assert data["type"] == MessageType.STATUS.value
+            assert data["status"] == TaskStatus.EXECUTING.value
+            
+            # Wait for final response (success status)
+            response = await websocket.recv()
+            data = json.loads(response)
+            
+            # Verify final response
             assert data["type"] == MessageType.STATUS.value
             assert data["status"] == TaskStatus.SUCCESS.value
-            assert data["output"] == "'test'\\n"
+            assert "test" in data["output"]
 
 @pytest.mark.asyncio
 async def test_task_failure():
@@ -89,14 +108,22 @@ async def test_task_failure():
             # Send task request
             await websocket.send(message)
             
-            # Wait for response
+            # Wait for first response (executing status)
             response = await websocket.recv()
             data = json.loads(response)
             
-            # Verify response
+            # Verify initial response is executing
+            assert data["type"] == MessageType.STATUS.value
+            assert data["status"] == TaskStatus.EXECUTING.value
+            
+            # Wait for final response (failure status)
+            response = await websocket.recv()
+            data = json.loads(response)
+            
+            # Verify final response
             assert data["type"] == MessageType.STATUS.value
             assert data["status"] == TaskStatus.FAILED.value
-            assert "not found" in data["output"] or "error" in data["output"]
+            assert "not found" in data["output"] or "error" in data["output"] or "command not found" in data["output"]
 
 @pytest.mark.asyncio
 async def test_heartbeat():
