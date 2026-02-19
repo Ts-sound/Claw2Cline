@@ -2,16 +2,41 @@
 # System Patterns 
 ## System Architecture 
 
-```bash
-
-``` 
+```mermaid
+graph TB
+    A[OpenClaw] -->|WebSocket JSON| B(Claw2Cline Bridge)
+    B -->|Spawn| C[Cline CLI]
+    C -->|Output| B
+    B -->|Status Updates| A
+    D[Named Pipes] -.-> B
+    B -.->|CLI Interface| E[claw2cline CLI]
+    
+    subgraph "Server Components"
+        B1[WebSocket Server]
+        B2[Task Executor]
+        B3[Thread Pool]
+    end
+    
+    subgraph "Client Components"
+        B4[WebSocket Client]
+        B5[Pipe Handler]
+        B6[Polling Threads]
+    end
+    
+    B <--> B1
+    B <--> B2
+    B <--> B3
+    B <--> B4
+    B <--> B5
+    B <--> B6
+```
 
 ## Key Technical Decisions 
-### 1. Asynchronous Notification Pattern 
+### 1. Threading-Based Notification Pattern 
 
 - **Problem**: Long-running tasks block the calling agent 
-- **Solution**: Immediate acknowledgment with async execution and callback notification 
-- **Implementation**: WebSocket for real-time updates, subprocess for task isolation 
+- **Solution**: Immediate acknowledgment with threaded execution and callback notification 
+- **Implementation**: WebSocket for real-time updates, subprocess for task isolation, threading for concurrency
 
 ### 2. Dual-Mode Architecture 
 
@@ -20,10 +45,18 @@
 
 ### 3. Message Flow Pattern 
 
-```bash
- OpenClaw ──(task JSON)──► Claw2Cline ──(ack: executing)──► OpenClaw │ ▼ Spawn Cline CLI │ ▼ Capture Output │ ▼ openclaw agent --message "task done" ──► OpenClaw 
- 
-``` 
+```mermaid
+sequenceDiagram
+    participant O as OpenClaw
+    participant B as Claw2Cline
+    participant C as Cline CLI
+    
+    O->>B: Task Request (WebSocket)
+    B->>O: Acknowledgment (executing)
+    B->>C: Execute Command
+    C-->>B: Output Stream
+    B->>O: Final Status (success/failed)
+```
 
 ### 3.1 Bridge Pattern
 - **Role**: Claw2Cline acts as the core bridge component
@@ -42,15 +75,29 @@
     - Simplifies logging and audit trails
     - Supports retry mechanisms for failed tasks
 
+### 3.4 Thread Pool Pattern
+- **Implementation**: Use ThreadPoolExecutor for managing concurrent task execution
+- **Benefits**: 
+    - Limits resource consumption
+    - Provides graceful task management
+    - Enables efficient concurrent processing
+
+### 3.5 Named Pipe Integration
+- **Purpose**: Seamless integration with existing OpenClaw pipe-based communication
+- **Implementation**: Client daemon reads from request pipe, writes to response pipe
+- **Benefits**: Maintains compatibility with existing workflows
+
 ## 4. Component Definition & Relationships
 
-| Component             | Core Responsibility                                  |
-|-----------------------|-------------------------------------------------------|
-| WebSocket Server      | Receive tasks from OpenClaw, send execution acknowledgments |
-| WebSocket Client      | Forward status/result messages back to OpenClaw       |
-| Task Executor         | Spawn, monitor, and terminate Cline CLI subprocesses  |
-| Notification Handler  | Orchestrate callback messages for task completion     |
-| Config Manager        | Manage environment configs and runtime parameters     |
+| Component             | Core Responsibility                                  | Implementation |
+|-----------------------|------------------------------------------------------|----------------|
+| WebSocket Server      | Receive tasks from OpenClaw, send execution acknowledgments | websocket-server |
+| WebSocket Client      | Forward status/result messages back to OpenClaw       | websocket-client |
+| Task Executor         | Spawn, monitor, and terminate Cline CLI subprocesses  | subprocess.Popen |
+| Thread Pool Manager   | Handle concurrent task execution                      | ThreadPoolExecutor |
+| Pipe Handler          | Manage named pipe I/O for CLI integration             | os.mkfifo, file I/O |
+| Polling Manager       | Monitor task status via background threads            | threading |
+| Config Manager        | Manage environment configs and runtime parameters     | config.py |
 
 ## 5. Critical Implementation Priorities
 ### Core Technical Paths (High Priority)
@@ -62,14 +109,18 @@
    - Safe process spawning
    - Real-time process monitoring
    - Graceful/forced termination
-3. Error Handling & Recovery
+3. Threading Safety & Resource Management
+   - Thread-safe data structures
+   - Proper resource cleanup
+   - Deadlock prevention
+4. Error Handling & Recovery
    - Comprehensive error catching
    - Automatic recovery workflows
    - Fallback mechanisms for critical failures
-4. Message Serialization/Deserialization
+5. Message Serialization/Deserialization
    - Standardized JSON schema for messages
    - Validation and error handling for malformed messages
-5. Observability (Logging & Debugging)
+6. Observability (Logging & Debugging)
    - Structured logging for all components
    - Debug mode support
    - Performance metrics collection

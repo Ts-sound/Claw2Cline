@@ -18,7 +18,7 @@
 ## Development Setup
 
 ### Prerequisites
-- Python 3.8+ (for asyncio and modern async features)
+- Python 3.8+
 - pip or poetry for dependency management
 - Access to Cline CLI
 - Access to OpenClaw agent CLI
@@ -30,50 +30,55 @@ Claw2Cline/
 ├── src/
 │   ├── __init__.py
 │   ├── server.py    # WebSocket server
-│   ├── client.py    # WebSocket client
-│   ├── executor.py  # Cline CLI executor
-│   ├── notifier.py  # OpenClaw notification
+│   ├── clientd.py   # WebSocket client daemon
+│   ├── protocol.py  # Message protocol definitions
+│   ├── cli.py       # Command line interface
 │   └── config.py    # Configuration management
 ├── tests/
 │   ├── __init__.py
 │   ├── test_server.py
-│   ├── test_client.py
-│   └── test_executor.py
+│   ├── test_clientd.py
+│   ├── test_protocol.py
+│   └── test_cli.py
 ├── pyproject.toml   # Project metadata and dependencies
 ├── README.md
 └── LICENSE
 ```
 
 ## Technical Constraints
-1. **Async Requirements**: Must use async/await for non-blocking operations
+1. **Threading Model**: Must use threading for non-blocking operations (replaced async/await)
 2. **Process Isolation**: Cline CLI runs in separate subprocess
 3. **Connection Reliability**: Must handle WebSocket disconnections gracefully
-4. **Resource Management**: Proper cleanup of subprocesses on shutdown
+4. **Resource Management**: Proper cleanup of subprocesses and threads on shutdown
 
-## Dependencies (Planned)
+## Dependencies (Current)
 
 | Package          | Purpose                                      |
 |------------------|----------------------------------------------|
-| websockets       | WebSocket server/client implementation       |
-| asyncio          | Async runtime (stdlib)                       |
+| websocket-client | WebSocket client implementation              |
+| websocket-server | WebSocket server implementation              |
 | subprocess       | CLI execution (stdlib)                       |
-| pydantic         | Data validation and settings management      |
+| threading        | Concurrent operation support (stdlib)        |
 | pytest           | Testing framework                            |
-| pytest-asyncio   | Async test support                           |
 
 ## Tool Usage Patterns
 
 ### WebSocket Library Options
-- `websockets`: Lightweight, pure Python, well-maintained
-- `aiohttp`: Full-featured HTTP/WebSocket server
-- Recommendation: Start with `websockets` for simplicity
+- `websocket-client`: Client-side WebSocket implementation
+- `websocket-server`: Server-side WebSocket implementation
+- Replaced `websockets` library with threading-based approach
 
 ### Subprocess Management
-- Use `asyncio.create_subprocess_exec()` for async subprocess
+- Use `subprocess.Popen()` for synchronous subprocess execution
 - Capture stdout/stderr for result reporting
 - Implement timeout handling for long-running tasks
+
+### Threading Model
+- Use `threading` module for concurrent operations
+- Use `ThreadPoolExecutor` for managing worker threads
+- Implement proper synchronization for shared resources
 
 ### Configuration
 - Environment variables for sensitive data
 - YAML or TOML for application config
-- pydantic for validation
+- Custom config management in config.py

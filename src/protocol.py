@@ -11,6 +11,7 @@ class MessageType(str, Enum):
     TASK = "task"
     STATUS = "status"
     HEARTBEAT = "heartbeat"
+    GET_TASK_STATUS = "get_task_status"
 
 class TaskStatus(str, Enum):
     """Task status values."""

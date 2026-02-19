@@ -5,6 +5,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
+from unittest.mock import Mock, patch, MagicMock
 from src.config import config
 from src.cli import send_command, status_command, main
 from src.clientd import ClientDaemon

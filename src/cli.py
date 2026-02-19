@@ -44,7 +44,51 @@ def send_command(args) -> int:
         logger.error(f"Failed to write to request pipe: {e}")
         return 1
 
-    # TODO: Wait for response
+    # If --wait flag is set, wait for response
+    if args.wait:
+        logger.info("Waiting for task completion...")
+        
+        # Clear any old responses in the pipe
+        try:
+            with open(response_pipe, "r") as pipe:
+                # Try to read any existing content to clear the pipe
+                try:
+                    pipe.read()
+                except:
+                    pass
+        except:
+            pass  # Ignore if pipe is empty or doesn't exist yet
+
+        # Wait for response with timeout
+        start_time = time.time()
+        while time.time() - start_time < DEFAULT_RESPONSE_TIMEOUT:
+            try:
+                with open(response_pipe, "r") as pipe:
+                    response_data = pipe.read()
+                    if response_data:
+                        # Parse the response
+                        import json
+                        try:
+                            response_json = json.loads(response_data.strip().split('\n')[0])
+                            status = response_json.get('status', '')
+                            output = response_json.get('output', '')
+                            
+                            if status in ['success', 'failed']:
+                                print(f"Task completed with status: {status}")
+                                if output:
+                                    print(f"Output: {output}")
+                                return 0 if status == 'success' else 1
+                        except json.JSONDecodeError:
+                            pass  # Continue waiting if JSON is malformed
+            except FileNotFoundError:
+                pass  # Continue waiting if pipe doesn't exist yet
+            except Exception as e:
+                logger.warning(f"Error reading response pipe: {e}")
+            
+            time.sleep(0.1)  # Short sleep to prevent busy waiting
+        
+        logger.warning("Timeout waiting for response")
+        return 1
 
     return 0
 
