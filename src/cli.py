@@ -1,0 +1,144 @@
+"""Command line interface for Claw2Cline."""
+import argparse
+import json
+import logging
+import sys
+import time
+from pathlib import Path
+from .config import config
+from .protocol import TaskResponse, TaskStatus
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def send_command(args) -> int:
+    """Send a command through the request pipe."""
+    request_pipe = config.request_pipe_path
+    response_pipe = config.response_pipe_path
+    
+    # Check if pipes exist
+    if not request_pipe.exists():
+        logger.error(f"Request pipe not found: {request_pipe}")
+        logger.error("Is clientd running?")
+        return 1
+    
+    # Build command
+    message = f"send"
+    if args.session:
+        message += f" {args.session}"
+    message += f" {args.command}"
+    
+    try:
+        # Write to request pipe
+        with open(request_pipe, "w") as pipe:
+            pipe.write(message + "\n")
+            pipe.flush()
+        logger.info(f"Sent command: {message}")
+    except Exception as e:
+        logger.error(f"Failed to write to request pipe: {e}")
+        return 1
+    
+    # Wait for response
+    if args.wait:
+        logger.info("Waiting for response...")
+        try:
+            # Read from response pipe
+            with open(response_pipe, "r") as pipe:
+                while True:
+                    line = pipe.readline().strip()
+                    if not line:
+                        continue
+                    logger.info(f"Received response: {line}")
+                    try:
+                        data = json.loads(line)
+                        response = TaskResponse.from_dict(data)
+                        print(f"Status: {response.status.value}")
+                        if response.output:
+                            print(f"Output: {response.output}")
+                        # Check if task is complete
+                        if response.status != TaskStatus.EXECUTING:
+                            break
+                    except json.JSONDecodeError:
+                        logger.error(f"Invalid JSON response: {line}")
+                        break
+        except FileNotFoundError:
+            logger.error(f"Response pipe not found: {response_pipe}")
+            return 1
+        except KeyboardInterrupt:
+            logger.info("Interrupted while waiting for response")
+            return 1
+    
+    return 0
+
+def status_command(args) -> int:
+    """Show status of Claw2Cline."""
+    pid_file = config.pid_file_path
+    cache_dir = config.cache_dir
+    
+    print(f"Cache directory: {cache_dir}")
+    print(f"Request pipe: {config.request_pipe_path}")
+    print(f"Response pipe: {config.response_pipe_path}")
+    print(f"PID file: {pid_file}")
+    
+    # Check if clientd is running
+    if pid_file.exists():
+        with open(pid_file, "r") as f:
+            pid = f.read().strip()
+        print(f"Clientd PID: {pid}")
+        # Check if process is running
+        try:
+            import os
+            os.kill(int(pid), 0)
+            print("Clientd status: running")
+        except (OSError, ValueError):
+            print("Clientd status: not running (stale PID file)")
+    else:
+        print("Clientd status: not running")
+    
+    return 0
+
+def main():
+    """Main entry point for CLI."""
+    parser = argparse.ArgumentParser(
+        prog="claw2cline",
+        description="Claw2Cline - WebSocket Bridge for OpenClaw to Cline"
+    )
+    parser.add_argument(
+        "--version", 
+        action="version", 
+        version="%(prog)s 0.1.0"
+    )
+    
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    
+    # send command
+    send_parser = subparsers.add_parser("send", help="Send a task to Cline")
+    send_parser.add_argument(
+        "command", 
+        help="Task command to send"
+    )
+    send_parser.add_argument(
+        "--session", "-s", 
+        default=None, 
+        help="Session name (default: default)"
+    )
+    send_parser.add_argument(
+        "--wait", "-w", 
+        action="store_true", 
+        help="Wait for task completion"
+    )
+    send_parser.set_defaults(func=send_command)
+    
+    # status command
+    status_parser = subparsers.add_parser("status", help="Show Claw2Cline status")
+    status_parser.set_defaults(func=status_command)
+    
+    args = parser.parse_args()
+    if args.command is None:
+        parser.print_help()
+        return 1
+    
+    return args.func(args)
+
+if __name__ == "__main__":
+    sys.exit(main())

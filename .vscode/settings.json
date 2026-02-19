@@ -3,6 +3,7 @@
         ".gitignore": false,
         "build": true,
         "run": true,
+        "**/__pycache__": true,
         "log": true
     },
     "doxdocgen.file.versionTag": "@version 1.0.0",
