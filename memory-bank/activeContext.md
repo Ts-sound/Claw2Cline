@@ -49,3 +49,7 @@ Project is in the architecture migration phase. The focus is on migrating from a
 - Thread safety requires careful attention to shared state
 - Synchronous subprocess operations are more predictable than async variants
 - The migration significantly simplified the codebase while maintaining functionality
+- Workspace and project management enhances multi-project development workflows
+- Project-specific command execution enables context-aware operations
+- Security-focused path validation prevents directory traversal vulnerabilities
+- Automatic project detection improves developer experience

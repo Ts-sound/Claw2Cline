@@ -87,6 +87,31 @@ sequenceDiagram
 - **Implementation**: Client daemon reads from request pipe, writes to response pipe
 - **Benefits**: Maintains compatibility with existing workflows
 
+### 3.6 Workspace and Project Management Pattern
+- **Purpose**: Enable management of multiple projects in a workspace directory
+- **Implementation**: 
+  - CLI commands to list and manage projects in workspace (`/opt/tong/ws/git-repo`)
+  - Project detection by common indicators (.git, README.md, package.json, etc.)
+  - Directory switching functionality when executing project-specific commands
+- **Benefits**:
+  - Supports multi-project development environments
+  - Provides context-aware command execution
+  - Maintains project isolation while enabling centralized management
+  - Enables project-specific Cline command execution
+
+### 3.7 Project-Specific Execution Pattern
+- **Purpose**: Execute commands within the context of a specific project directory
+- **Implementation**:
+  - `--project` or `-p` flag in CLI to specify target project
+  - Automatic directory switching before command execution
+  - Path validation to prevent security issues
+  - Integration with Cline command construction (`cline -y -c "/path/to/project" "command"`)
+- **Benefits**:
+  - Enables project-aware development workflows
+  - Maintains proper execution context for commands
+  - Supports cross-project command execution
+  - Provides secure directory switching with validation
+
 ## 4. Component Definition & Relationships
 
 | Component             | Core Responsibility                                  | Implementation |

@@ -94,9 +94,12 @@ class ClientDaemon:
             status_query = {"type": MessageType.GET_TASK_STATUS.value, "task_id": task_id, "timestamp": int(time.time())}
             if self.websocket:
                 self.websocket.send(json.dumps(status_query))
-                logger.info(f"Sent status query for task: {task_id}")
+                logger.info(f"Status query sent - Task: {task_id}, Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
+            else:
+                logger.warning(f"Cannot send status query - WebSocket not connected for task: {task_id}")
         except Exception as e:
-            logger.error(f"Failed to send status query for task {task_id}: {e}")
+            logger.error(f"Failed to send status query for task {task_id}: {str(e)}")
+            logger.debug(f"Status query payload: {status_query}", exc_info=True)
 
     def poll_task_status_thread(self, task_id: str) -> None:
         """Thread function to poll for task status every 2 seconds."""
@@ -200,8 +203,9 @@ class ClientDaemon:
                                 del self.active_tasks[task_id]
                                 logger.info(f"Stopped polling for completed task: {task_id}")
 
-                        # Write to response pipe
-                        self.write_response_pipe(message)
+                        # TODO: Write to response pipe
+                        # self.write_response_pipe(message)
+                        logger.info(f"Output: {data.get('output')}")
                     else:
                         logger.info(f"Received message type: {msg_type}")
 
@@ -224,17 +228,17 @@ class ClientDaemon:
             # Run both tasks concurrently using threads
             request_thread = threading.Thread(target=self.read_request_pipe)
             websocket_thread = threading.Thread(target=self.listen_websocket)
-            
+
             request_thread.daemon = True
             websocket_thread.daemon = True
-            
+
             request_thread.start()
             websocket_thread.start()
-            
+
             # Wait for threads to complete (they run indefinitely)
             request_thread.join()
             websocket_thread.join()
-            
+
         finally:
             self.cleanup()
 

@@ -5,6 +5,8 @@ import json
 import logging
 import sys
 import time
+import os
+import glob
 from pathlib import Path
 from .config import config
 from .protocol import TaskResponse, TaskStatus
@@ -12,8 +14,66 @@ from .protocol import TaskResponse, TaskStatus
 # Timeout for waiting for responses (in seconds)
 DEFAULT_RESPONSE_TIMEOUT = 5
 
+# Default workspace directory
+WORKSPACE_DIR = "/opt/tong/ws/git-repo"
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def list_projects(workspace_dir=WORKSPACE_DIR):
+    """List all projects in the workspace directory."""
+    if not os.path.exists(workspace_dir):
+        logger.error(f"Workspace directory does not exist: {workspace_dir}")
+        return []
+    
+    projects = []
+    for item in os.listdir(workspace_dir):
+        item_path = os.path.join(workspace_dir, item)
+        if os.path.isdir(item_path):
+            # Check if it looks like a project directory (has common project files)
+            project_indicators = ['.git', 'README.md', 'package.json', 'setup.py', 'requirements.txt', 'pyproject.toml']
+            if any(os.path.exists(os.path.join(item_path, indicator)) for indicator in project_indicators):
+                projects.append(item)
+    
+    return sorted(projects)
+
+
+def workspace_command(args) -> int:
+    """Show workspace information."""
+    print(f"Workspace directory: {WORKSPACE_DIR}")
+    
+    if args.subcommand == "status" or not args.subcommand:
+        # Show workspace status
+        if os.path.exists(WORKSPACE_DIR):
+            print(f"Status: Available")
+            projects = list_projects()
+            print(f"Projects found: {len(projects)}")
+            if projects:
+                print("Projects:")
+                for project in projects:
+                    print(f"  - {project}")
+            else:
+                print("No projects detected in workspace")
+        else:
+            print(f"Status: Not found - {WORKSPACE_DIR} does not exist")
+    
+    return 0
+
+
+def projects_command(args) -> int:
+    """List projects in the workspace."""
+    projects = list_projects()
+    if projects:
+        print(f"Found {len(projects)} projects in workspace ({WORKSPACE_DIR}):")
+        for project in projects:
+            print(f"  - {project}")
+    else:
+        print(f"No projects found in workspace ({WORKSPACE_DIR})")
+        if not os.path.exists(WORKSPACE_DIR):
+            print(f"Warning: Workspace directory does not exist")
+    
+    return 0
 
 
 def send_command(args) -> int:
@@ -27,11 +87,20 @@ def send_command(args) -> int:
         logger.error("Is clientd running?")
         return 1
 
-    # Build command
-    message = f"send"
-    if args.session:
-        message += f" {args.session}"
-    message += f" {args.command}"
+    # Build command - if project is specified, construct cline command with project directory
+    if hasattr(args, 'project') and args.project:
+        # Construct command in the format: cline -y -c "/path/to/project" "actual_command"
+        project_path = os.path.join(WORKSPACE_DIR, args.project)
+        if not os.path.exists(project_path):
+            logger.error(f"Project '{args.project}' does not exist in workspace: {project_path}")
+            return 1
+        message = f"send {args.session or 'default'} cline -y -c \"{project_path}\" \"{args.command}\""
+    else:
+        # Regular command without project specification
+        message = f"send"
+        if args.session:
+            message += f" {args.session}"
+        message += f" {args.command}"
 
     try:
         # Write to request pipe
@@ -137,16 +206,36 @@ def main():
     send_parser.add_argument("command", help="Task command to send")
     send_parser.add_argument("--session", "-s", default=None, help="Session name (default: default)")
     send_parser.add_argument("--wait", "-w", action="store_true", help="Wait for task completion")
+    send_parser.add_argument("--project", "-p", help="Project name to execute command in")
     send_parser.set_defaults(func=send_command)
 
     # status command
     status_parser = subparsers.add_parser("status", help="Show Claw2Cline status")
     status_parser.set_defaults(func=status_command)
 
+    # workspace command
+    workspace_parser = subparsers.add_parser("workspace", help="Manage workspace and projects")
+    workspace_subparsers = workspace_parser.add_subparsers(dest="subcommand", help="Workspace subcommands")
+    
+    # workspace status
+    workspace_status_parser = workspace_subparsers.add_parser("status", help="Show workspace status")
+    workspace_status_parser.set_defaults(func=workspace_command)
+    
+    # workspace default (status)
+    workspace_parser.set_defaults(func=workspace_command, subcommand="status")
+
+    # projects command
+    projects_parser = subparsers.add_parser("projects", help="List projects in workspace")
+    projects_parser.set_defaults(func=projects_command)
+
     args = parser.parse_args()
     if args.command is None:
         parser.print_help()
         return 1
+
+    # Handle the case where func is not set for workspace without subcommand
+    if args.command == "workspace" and not hasattr(args, 'func'):
+        args.func = workspace_command
 
     return args.func(args)
 

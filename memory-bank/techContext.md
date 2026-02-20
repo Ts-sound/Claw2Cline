@@ -82,3 +82,10 @@ Claw2Cline/
 - Environment variables for sensitive data
 - YAML or TOML for application config
 - Custom config management in config.py
+
+### Workspace and Project Management
+- **Purpose**: Support for managing multiple projects in a workspace directory (`/opt/tong/ws/git-repo`)
+- **Commands**: `claw2cline workspace`, `claw2cline projects`, `claw2cline send --project <project>`
+- **Project Detection**: Identifies projects by common indicators like `.git`, `README.md`, `package.json`, `setup.py`, etc.
+- **Directory Switching**: Automatically switches to project directory when executing commands with `--project` flag
+- **Path Validation**: Validates project paths to prevent security issues

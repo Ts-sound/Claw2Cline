@@ -4,6 +4,8 @@ import json
 import logging
 import subprocess
 import threading
+import os
+import glob
 from typing import Dict, Optional
 from concurrent.futures import ThreadPoolExecutor
 import websocket
@@ -19,6 +21,12 @@ from .protocol import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Default workspace directory
+WORKSPACE_DIR = "/opt/tong/ws/git-repo"
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 class ClineTask:
     """Represents a running Cline task."""
@@ -30,27 +38,76 @@ class ClineTask:
         self.status = TaskStatus.EXECUTING
         self.lock = threading.Lock()
 
+    def _parse_project_from_command(self, command: str) -> str:
+        """
+        Parse the project name from command to determine working directory.
+        Looks for patterns like: cline -y -c "/path/to/project" "command"
+        or tries to identify project from the command structure.
+        """
+        import re
+        
+        # Look for the -c flag followed by a project directory
+        # Pattern: -c "/path/to/project" or -c '/path/to/project'
+        cline_pattern = r'-c\s+[\'"]([^\'"]+)[\'"]'
+        matches = re.findall(cline_pattern, command)
+        
+        if matches:
+            project_path = matches[0]
+            # Extract project name from path
+            project_name = os.path.basename(project_path)
+            return project_name
+        
+        # If no -c flag found, try to identify from workspace
+        # If the command contains workspace references, extract project
+        workspace_matches = re.findall(r'/opt/tong/ws/git-repo/([^/\s]+)', command)
+        if workspace_matches:
+            return workspace_matches[0]
+        
+        # Default: return current project name (current directory name)
+        return os.path.basename(os.getcwd())
+
+    def _get_project_directory(self, project_name: str) -> str:
+        """Get the full path to the project directory."""
+        project_path = os.path.join(WORKSPACE_DIR, project_name)
+        
+        # Check if the project directory exists
+        if os.path.isdir(project_path):
+            return project_path
+        else:
+            # If project doesn't exist in workspace, return default project (current)
+            logger.warning(f"Project '{project_name}' not found in workspace. Using current directory.")
+            return os.getcwd()
+
     def run(self) -> None:
-        """Execute the Cline command."""
+        """Execute the Cline command in the appropriate project directory."""
         try:
+            # Determine the project directory based on the command
+            project_name = self._parse_project_from_command(self.request.command)
+            project_dir = self._get_project_directory(project_name)
+            
             logger.info(f"Starting task {self.request.id}: {self.request.command}")
+            logger.info(f"Project directory: {project_dir}")
+            
+            # Execute command in the project directory
             self.process = subprocess.Popen(
                 self.request.command,
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                text=True
+                text=True,
+                cwd=project_dir  # Set working directory to project directory
             )
+            
             # Read output
             stdout, _ = self.process.communicate()
             self.output = stdout
 
             if self.process.returncode == 0:
                 self.status = TaskStatus.SUCCESS
-                logger.info(f"Task {self.request.id} completed successfully")
+                logger.info(f"Task {self.request.id} completed successfully in {project_dir}")
             else:
                 self.status = TaskStatus.FAILED
-                logger.warning(f"Task {self.request.id} failed with code {self.process.returncode}")
+                logger.warning(f"Task {self.request.id} failed with code {self.process.returncode} in {project_dir}")
         except Exception as e:
             self.status = TaskStatus.FAILED
             self.output = str(e)
@@ -123,10 +180,13 @@ class Server:
     def handle_get_task_status(self, client, server, data: dict) -> None:
         """Handle a task status query."""
         task_id = data.get("task_id")
+        logger.info(f"Received status query for task: {task_id}")
+        
         if not task_id:
             error_response = create_task_response("", TaskStatus.FAILED, "Missing task_id in request")
             from websocket_server import WebsocketServer
             server.send_message(client, error_response.to_json())
+            logger.warning(f"Status query received without task_id: {data}")
             return
 
         if task_id in self.tasks:
@@ -134,12 +194,14 @@ class Server:
             response = create_task_response(task_id, task.status, task.output)
             from websocket_server import WebsocketServer
             server.send_message(client, response.to_json())
+            logger.info(f"Status query responded - Task: {task_id}, Status: {task.status}, Output length: {len(task.output)}")
         else:
             # Task not found, could be completed
             # Return a completed status or indicate task not found
             response = create_task_response(task_id, TaskStatus.SUCCESS, "Task completed or not found")
             from websocket_server import WebsocketServer
             server.send_message(client, response.to_json())
+            logger.info(f"Status query responded - Task not found: {task_id}, returning completed status")
 
     def run_task(self, client, server, task: ClineTask) -> None:
         """Run a task and send result when complete."""

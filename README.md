@@ -18,6 +18,7 @@ By leveraging WebSockets for real-time bi-directional communication, Claw2Cline 
 - Access to OpenClaw agent CLI
 
 ### Quick Setup
+
 ```bash
 # Clone the repository
 git clone <repository-url>
@@ -50,6 +51,7 @@ pip install websocket-client websocket-server
 ## 📖 Usage Guide
 
 ### 1. Starting the Server
+
 ```bash
 # Start the WebSocket server (typically runs on Cline side)
 python -m claw2cline-server
@@ -58,6 +60,7 @@ claw2cline-server
 ```
 
 ### 2. Starting the Client Daemon
+
 ```bash
 # Start the client daemon (typically runs on OpenClaw side)
 python -m claw2cline-clientd
@@ -66,6 +69,7 @@ claw2cline-clientd
 ```
 
 ### 3. Using the CLI Interface
+
 ```bash
 # Send a task to Cline
 claw2cline send "your command here"
@@ -76,9 +80,27 @@ claw2cline send --session mysession "your command here"
 # Send a task and wait for completion
 claw2cline send --wait "your command here"
 
+# Send a task in a specific project directory
+claw2cline send --project Claw2Cline "summarize"
+claw2cline send -p Claw2Cline "analyze the code"
+
 # Check the status of Claw2Cline
 claw2cline status
+
+# Check workspace information
+claw2cline workspace
+
+# List all projects in the workspace
+claw2cline projects
 ```
+
+### 4. Workspace and Project Management
+The system supports managing multiple projects in a workspace directory (`/opt/tong/ws/git-repo`):
+
+- **Workspace Command**: `claw2cline workspace` - Shows workspace status and available projects
+- **Projects Command**: `claw2cline projects` - Lists all projects detected in the workspace
+- **Project-Specific Execution**: Use `--project` or `-p` flag to execute commands in specific project directories
+- **Automatic Project Detection**: The system identifies projects by common indicators like `.git`, `README.md`, `package.json`, `setup.py`, etc.
 
 ### 4. Named Pipe Integration
 The client daemon creates named pipes for seamless integration:
@@ -120,6 +142,7 @@ Configuration is managed through environment variables or the config file:
 
 ### Debugging
 Enable debug logging by setting environment variable:
+
 ```bash
 export CLAW2CLINE_LOG_LEVEL=DEBUG
 ```
@@ -129,6 +152,7 @@ export CLAW2CLINE_LOG_LEVEL=DEBUG
 ## 🤝 Integration Examples
 
 ### With OpenClaw Skills
+
 ```python
 # Example of how OpenClaw skills can interact
 import subprocess
@@ -141,6 +165,7 @@ with open('/tmp/claw2cline/response.pipe', 'r') as pipe:
 ```
 
 ### Direct API Usage
+
 ```python
 from src.server import Server
 from src.clientd import ClientDaemon
@@ -154,7 +179,13 @@ daemon = ClientDaemon()
 daemon.run()
 ```
 
----
+```bash
+CLAW2CLINE_SERVER_HOST=0.0.0.0 python3 -m src.server
+
+CLAW2CLINE_SERVER_HOST=0.0.0.0 claw2cline-server
+
+CLAW2CLINE_SERVER_URL=ws://172.17.0.2:8765  claw2cline-clientd 
+```
 
 ## 📋 TODO
 - Multi-Cline agent cluster allocation and scheduling

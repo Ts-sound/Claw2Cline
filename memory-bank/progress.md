@@ -59,7 +59,17 @@
 - [x] Optimize test execution and reporting pipeline
 - [x] Update dependencies for threading model
 
-### Phase 7: Future Enhancements
+### Phase 7: Feature Enhancements
+- [x] Add workspace and project management commands
+- [x] Implement project-specific command execution
+- [x] Add claw2cline workspace command
+- [x] Add claw2cline projects command
+- [x] Add --project/-p flag to send command
+- [x] Implement automatic directory switching for project commands
+- [x] Add project detection and validation
+- [x] Update documentation with new features
+
+### Phase 8: Future Enhancements
 - [ ] Multi-cline agent cluster support
 - [ ] Task scheduling and load balancing
 
