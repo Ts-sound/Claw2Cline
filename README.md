@@ -4,10 +4,10 @@
 
 Claw2Cline is a high-performance Python bridge designed to facilitate seamless task delegation between OpenClaw and Cline. The system has been migrated from an async/await architecture to a threading-based model for better resource control and simpler concurrency management.
 
-By leveraging WebSockets for real-time bi-directional communication, Claw2Cline allows OpenClaw to dispatch complex engineering missions to Cline's CLI. It features a threading-based notification system that monitors task execution and automatically reports completion back to the OpenClaw agent, ensuring a closed-loop autonomous development workflow.
+By leveraging WebSockets for real-time bi-directional communication, Claw2Cline allows OpenClaw to dispatch complex engineering missions to Cline's CLI. It features a **synchronous execution model** that waits for task completion and returns results through named pipes.
 
-> Claw2Cline is a Python-based orchestration bridge that enables **OpenClaw** to command **Cline** via CLI. It solves the "long-running task" problem in agent collaboration by implementing a **threading-based notification pattern**.
-> By leveraging **WebSockets** for real-time bi-directional communication, Claw2Cline allows OpenClaw to dispatch complex engineering missions to Cline's CLI. It features a notification system that monitors task execution and automatically reports completion back to the OpenClaw agent, ensuring a closed-loop autonomous development workflow.
+> Claw2Cline is a Python-based orchestration bridge that enables **OpenClaw** to command **Cline** via CLI. It solves the "long-running task" problem in agent collaboration by implementing a **synchronous pipe-based communication pattern**.
+> By leveraging **WebSockets** for real-time bi-directional communication, Claw2Cline allows OpenClaw to dispatch complex engineering missions to Cline's CLI. It features a synchronous execution model that waits for task completion and returns results through named pipes.
 
 ## 🚀 Installation
 
@@ -70,15 +70,14 @@ claw2cline-clientd
 
 ### 3. Using the CLI Interface
 
+**Synchronous Mode (Default)**: The `send` command now waits for task completion and returns results through the response pipe.
+
 ```bash
-# Send a task to Cline
+# Send a task to Cline (synchronous - waits for completion)
 claw2cline send "your command here"
 
 # Send a task with a specific session
 claw2cline send --session mysession "your command here"
-
-# Send a task and wait for completion
-claw2cline send --wait "your command here"
 
 # Send a task in a specific project directory
 claw2cline send --project Claw2Cline "summarize"
@@ -101,6 +100,7 @@ The system supports managing multiple projects in a workspace directory (`/opt/t
 - **Projects Command**: `claw2cline projects` - Lists all projects detected in the workspace **on the server**
 - **Project-Specific Execution**: Use `--project` or `-p` flag to execute commands in specific project directories
 - **Automatic Project Detection**: The system identifies projects by common indicators like `.git`, `README.md`, `package.json`, `setup.py`, etc.
+- **Synchronous Execution**: The `send` command waits for task completion and returns results through the response pipe
 
 **Important Note for Remote Access**: All workspace and project commands are executed on the server side, not locally. This means:
 - `claw2cline workspace` queries the server for workspace information
@@ -112,7 +112,14 @@ The system supports managing multiple projects in a workspace directory (`/opt/t
 Examples:
 - `claw2cline workspace` - Shows server's workspace status
 - `claw2cline projects` - Lists projects on the server
-- `claw2cline send -p Claw2Cline "summarize"` - Executes command in Claw2Cline project on server
+- `claw2cline send -p Claw2Cline "summarize"` - Executes command in Claw2Cline project on server (synchronous)
+
+### 4b. Synchronous Execution Model
+The `send` command now operates in synchronous mode by default:
+- Command is sent through the request pipe
+- CLI waits for task completion (up to 60 seconds)
+- Results are returned through the response pipe in text format
+- Output includes task status (success/failed) and command output
 
 ### 4. Named Pipe Integration
 The client daemon creates named pipes for seamless integration:

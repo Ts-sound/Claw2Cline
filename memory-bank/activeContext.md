@@ -29,6 +29,13 @@ Project is in the architecture migration phase. The focus is on migrating from a
   - Client daemon forwards workspace/projects commands to server
   - CLI reads and displays server responses
   - All workspace/project commands now execute on server for remote access support
+- 2026-02-21: **IMPLEMENTED**: Synchronous execution mode for send command
+  - Removed asynchronous openclaw agent notification logic
+  - Send command now waits for task completion (up to 60 seconds)
+  - Results returned through response pipe in text format
+  - Removed --wait flag (synchronous is now default)
+  - Added task status tracking for polling support
+  - JSON to text conversion for pipe responses
 
 ## Next Steps
 
