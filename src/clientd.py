@@ -32,6 +32,7 @@ class ClientDaemon:
         self.response_pipe: Path = config.response_pipe_path
         self.pid_file: Path = config.pid_file_path
         self.active_tasks = {}  # Track active tasks that need polling
+        self.workspace_dir: str = ""  # Workspace directory from server
         logger.info("ClientDaemon initialized")
 
     def setup(self) -> None:
@@ -65,7 +66,7 @@ class ClientDaemon:
             logger.info(f"Removed PID file: {self.pid_file}")
 
     def connect_server(self) -> None:
-        """Connect to WebSocket server."""
+        """Connect to WebSocket server and get workspace directory."""
         server_url = config.server_url
         logger.info(f"Connecting to server: {server_url}")
 
@@ -77,6 +78,23 @@ class ClientDaemon:
                 self.websocket = websocket.WebSocket()
                 self.websocket.connect(server_url)
                 logger.info("Connected to server")
+                
+                # Query workspace directory from server
+                self.send_workspace_query()
+                
+                # Wait for workspace response (with timeout)
+                start_time = time.time()
+                while time.time() - start_time < 5 and not self.workspace_dir:
+                    message = self.websocket.recv()
+                    data = json.loads(message)
+                    if data.get("type") == "workspace_status":
+                        self.workspace_dir = data.get("workspace_dir", "")
+                        logger.info(f"Got workspace directory from server: {self.workspace_dir}")
+                        break
+                
+                if not self.workspace_dir:
+                    logger.warning("Failed to get workspace directory from server")
+                
                 return
             except Exception as e:
                 logger.error(f"Failed to connect to server (attempt {attempt + 1}/{max_retries}): {e}")
@@ -126,10 +144,10 @@ class ClientDaemon:
             logger.error(f"Failed to send projects query: {str(e)}")
 
     def poll_task_status_thread(self, task_id: str) -> None:
-        """Thread function to poll for task status every 2 seconds."""
+        """Thread function to poll for task status every 5 seconds."""
         logger.info(f"Polling for status of task: {task_id}")
         while self.running and task_id in self.active_tasks:
-            time.sleep(2)  # Poll every 2 seconds
+            time.sleep(5)  # Poll every 5 seconds
             self.send_status_query(task_id)
 
     def start_task_polling(self, task_id: str) -> None:
@@ -172,7 +190,7 @@ class ClientDaemon:
                         if parts[0] == "workspace":
                             self.send_workspace_query()
                             continue
-                        
+
                         # Handle projects query
                         if parts[0] == "projects":
                             self.send_projects_query()
@@ -180,38 +198,45 @@ class ClientDaemon:
 
                         # Handle send command
                         if parts[0] == "send":
-                            parts = line.split(maxsplit=3)
-                            if len(parts) < 2:
+                            # Parse the full line with more parts to capture all arguments
+                            all_parts = line.split()
+                            if len(all_parts) < 2:
                                 logger.warning(f"Invalid command format: {line}")
                                 continue
+
                             # Parse session, optional project, and command
                             idx = 1
                             session = "default"
                             project = None
-                            
+
                             # Check if next part is session or --project
-                            if idx < len(parts) and not parts[idx].startswith('--'):
-                                session = parts[idx]
+                            if idx < len(all_parts) and not all_parts[idx].startswith("--"):
+                                session = all_parts[idx]
                                 idx += 1
-                            
+
                             # Check for --project flag
-                            if idx < len(parts) and parts[idx] == '--project':
+                            if idx < len(all_parts) and all_parts[idx] == "--project":
                                 idx += 1
-                                if idx < len(parts):
-                                    project = parts[idx]
+                                if idx < len(all_parts):
+                                    project = all_parts[idx]
                                     idx += 1
-                            
-                            # Get the command
-                            command = parts[idx] if idx < len(parts) else ""
-                            
+
+                            # Get the rest as command (may contain spaces)
+                            command = " ".join(all_parts[idx:]) if idx < len(all_parts) else ""
+
                             # Build command with project info if specified
                             if project:
-                                # Pass project name to server for resolution
+                                # Build full path using workspace_dir from server
+                                if self.workspace_dir:
+                                    project_path = os.path.join(self.workspace_dir, project)
+                                else:
+                                    # Fallback to project name if workspace_dir not set
+                                    project_path = project
                                 # Command must be quoted to preserve arguments
-                                full_command = f"cline -y -c \"{project}\" \"{command}\""
+                                full_command = f'cline -y -c "{project_path}" "{command}"'
                             else:
                                 full_command = command
-                            
+
                             # Create and send task request
                             request = create_task_request(full_command, session)
                             if self.websocket:
@@ -229,11 +254,24 @@ class ClientDaemon:
                 logger.error(f"Error reading request pipe: {e}")
                 time.sleep(1)
 
-    def write_response_pipe(self, response: str) -> None:
-        """Write response to response pipe."""
+    def response_to_text(self, response_json: str) -> str:
+        """Convert JSON response to text format with newlines."""
         try:
+            data = json.loads(response_json)
+            lines = []
+            for key, value in data.items():
+                lines.append(f"{key}: {value}")
+            return "\n".join(lines)
+        except json.JSONDecodeError:
+            return response_json
+
+    def write_response_pipe(self, response: str) -> None:
+        """Write response to response pipe in text format."""
+        try:
+            # Convert JSON to text format
+            text_response = self.response_to_text(response)
             with open(self.response_pipe, "w") as pipe:
-                pipe.write(response + "\n")
+                pipe.write(text_response + "\n")
                 pipe.flush()
             logger.info(f"Wrote response to pipe")
         except Exception as e:
@@ -267,11 +305,11 @@ class ClientDaemon:
                         # Write to response pipe
                         self.write_response_pipe(message)
                         logger.info(f"Output: {data.get('output')}")
-                    elif msg_type == 'workspace_status':
+                    elif msg_type == "workspace_status":
                         # Write workspace response to pipe
                         self.write_response_pipe(message)
                         logger.info(f"Workspace status: {data}")
-                    elif msg_type == 'projects_list':
+                    elif msg_type == "projects_list":
                         # Write projects response to pipe
                         self.write_response_pipe(message)
                         logger.info(f"Projects list: {data}")

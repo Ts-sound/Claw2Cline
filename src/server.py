@@ -55,52 +55,35 @@ class ClineTask:
         self.status = TaskStatus.EXECUTING
         self.lock = threading.Lock()
 
-    def _parse_project_from_command(self, command: str) -> str:
+    def _get_project_directory(self, command: str) -> str:
         """
-        Parse the project name from command to determine working directory.
-        Looks for patterns like: cline -y -c "/path/to/project" "command"
-        or tries to identify project from the command structure.
+        Extract project directory from command.
+        Command format: cline -y -c "/full/path/to/project" "command"
         """
         import re
         
-        # Look for the -c flag followed by a project directory
-        # Pattern: -c "/path/to/project" or -c '/path/to/project'
+        # Look for the -c flag followed by a path
         cline_pattern = r'-c\s+[\'"]([^\'"]+)[\'"]'
         matches = re.findall(cline_pattern, command)
         
         if matches:
-            project_path = matches[0]
-            # Extract project name from path
-            project_name = os.path.basename(project_path)
-            return project_name
+            project_dir = matches[0]
+            logger.info(f"Extracted project directory: {project_dir}")
+            if os.path.isdir(project_dir):
+                return project_dir
+            else:
+                logger.warning(f"Project directory '{project_dir}' does not exist. Using current directory.")
+                return os.getcwd()
         
-        # If no -c flag found, try to identify from workspace
-        # If the command contains workspace references, extract project
-        workspace_matches = re.findall(r'/opt/tong/ws/git-repo/([^/\s]+)', command)
-        if workspace_matches:
-            return workspace_matches[0]
-        
-        # Default: return current project name (current directory name)
-        return os.path.basename(os.getcwd())
-
-    def _get_project_directory(self, project_name: str) -> str:
-        """Get the full path to the project directory."""
-        project_path = os.path.join(WORKSPACE_DIR, project_name)
-        
-        # Check if the project directory exists
-        if os.path.isdir(project_path):
-            return project_path
-        else:
-            # If project doesn't exist in workspace, return default project (current)
-            logger.warning(f"Project '{project_name}' not found in workspace. Using current directory.")
-            return os.getcwd()
+        # Default: return current directory
+        logger.info("No -c flag found, using current directory")
+        return os.getcwd()
 
     def run(self) -> None:
         """Execute the Cline command in the appropriate project directory."""
         try:
-            # Determine the project directory based on the command
-            project_name = self._parse_project_from_command(self.request.command)
-            project_dir = self._get_project_directory(project_name)
+            # Get project directory from command
+            project_dir = self._get_project_directory(self.request.command)
             
             logger.info(f"Starting task {self.request.id}: {self.request.command}")
             logger.info(f"Project directory: {project_dir}")

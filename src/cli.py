@@ -26,16 +26,16 @@ def list_projects(workspace_dir=WORKSPACE_DIR):
     if not os.path.exists(workspace_dir):
         logger.error(f"Workspace directory does not exist: {workspace_dir}")
         return []
-    
+
     projects = []
     for item in os.listdir(workspace_dir):
         item_path = os.path.join(workspace_dir, item)
         if os.path.isdir(item_path):
             # Check if it looks like a project directory (has common project files)
-            project_indicators = ['.git', 'README.md', 'package.json', 'setup.py', 'requirements.txt', 'pyproject.toml']
+            project_indicators = [".git", "README.md", "package.json", "setup.py", "requirements.txt", "pyproject.toml"]
             if any(os.path.exists(os.path.join(item_path, indicator)) for indicator in project_indicators):
                 projects.append(item)
-    
+
     return sorted(projects)
 
 
@@ -70,14 +70,14 @@ def workspace_command(args) -> int:
                 if response_data:
                     # Parse the response
                     try:
-                        response_json = json.loads(response_data.strip().split('\n')[0])
-                        msg_type = response_json.get('type', '')
-                        
-                        if msg_type == 'workspace_status':
-                            workspace_dir = response_json.get('workspace_dir', 'Unknown')
-                            exists = response_json.get('exists', False)
-                            projects_count = response_json.get('projects_count', 0)
-                            
+                        response_json = json.loads(response_data.strip().split("\n")[0])
+                        msg_type = response_json.get("type", "")
+
+                        if msg_type == "workspace_status":
+                            workspace_dir = response_json.get("workspace_dir", "Unknown")
+                            exists = response_json.get("exists", False)
+                            projects_count = response_json.get("projects_count", 0)
+
                             print(f"Workspace directory: {workspace_dir}")
                             if exists:
                                 print(f"Status: Available")
@@ -93,9 +93,9 @@ def workspace_command(args) -> int:
             pass  # Continue waiting if pipe doesn't exist yet
         except Exception as e:
             logger.warning(f"Error reading response pipe: {e}")
-        
+
         time.sleep(0.1)  # Short sleep to prevent busy waiting
-    
+
     logger.warning("Timeout waiting for workspace response")
     return 1
 
@@ -131,14 +131,14 @@ def projects_command(args) -> int:
                 if response_data:
                     # Parse the response
                     try:
-                        response_json = json.loads(response_data.strip().split('\n')[0])
-                        msg_type = response_json.get('type', '')
-                        
-                        if msg_type == 'projects_list':
-                            workspace_dir = response_json.get('workspace_dir', 'Unknown')
-                            projects = response_json.get('projects', [])
-                            count = response_json.get('count', len(projects))
-                            
+                        response_json = json.loads(response_data.strip().split("\n")[0])
+                        msg_type = response_json.get("type", "")
+
+                        if msg_type == "projects_list":
+                            workspace_dir = response_json.get("workspace_dir", "Unknown")
+                            projects = response_json.get("projects", [])
+                            count = response_json.get("count", len(projects))
+
                             if projects:
                                 print(f"Found {count} projects in workspace ({workspace_dir}):")
                                 for project in projects:
@@ -154,9 +154,9 @@ def projects_command(args) -> int:
             pass  # Continue waiting if pipe doesn't exist yet
         except Exception as e:
             logger.warning(f"Error reading response pipe: {e}")
-        
+
         time.sleep(0.1)  # Short sleep to prevent busy waiting
-    
+
     logger.warning("Timeout waiting for projects response")
     return 1
 
@@ -174,7 +174,7 @@ def send_command(args) -> int:
 
     # Build command - if project is specified, pass project name to be resolved by server
     # The server side will handle project path resolution and validation
-    if hasattr(args, 'project') and args.project:
+    if hasattr(args, "project") and args.project:
         # Pass project name to server for resolution
         # Server will construct: cline -y -c "/path/to/project" "command"
         message = f"send {args.session or 'default'} --project {args.project} {args.command}"
@@ -199,7 +199,7 @@ def send_command(args) -> int:
     # If --wait flag is set, wait for response
     if args.wait:
         logger.info("Waiting for task completion...")
-        
+
         # Clear any old responses in the pipe
         try:
             with open(response_pipe, "r") as pipe:
@@ -220,25 +220,26 @@ def send_command(args) -> int:
                     if response_data:
                         # Parse the response
                         import json
+
                         try:
-                            response_json = json.loads(response_data.strip().split('\n')[0])
-                            status = response_json.get('status', '')
-                            output = response_json.get('output', '')
-                            
-                            if status in ['success', 'failed']:
+                            response_json = json.loads(response_data.strip().split("\n")[0])
+                            status = response_json.get("status", "")
+                            output = response_json.get("output", "")
+
+                            if status in ["success", "failed"]:
                                 print(f"Task completed with status: {status}")
                                 if output:
                                     print(f"Output: {output}")
-                                return 0 if status == 'success' else 1
+                                return 0 if status == "success" else 1
                         except json.JSONDecodeError:
                             pass  # Continue waiting if JSON is malformed
             except FileNotFoundError:
                 pass  # Continue waiting if pipe doesn't exist yet
             except Exception as e:
                 logger.warning(f"Error reading response pipe: {e}")
-            
+
             time.sleep(0.1)  # Short sleep to prevent busy waiting
-        
+
         logger.warning("Timeout waiting for response")
         return 1
 
@@ -299,11 +300,11 @@ def main():
     # workspace command
     workspace_parser = subparsers.add_parser("workspace", help="Manage workspace and projects")
     workspace_subparsers = workspace_parser.add_subparsers(dest="subcommand", help="Workspace subcommands")
-    
+
     # workspace status
     workspace_status_parser = workspace_subparsers.add_parser("status", help="Show workspace status")
     workspace_status_parser.set_defaults(func=workspace_command)
-    
+
     # workspace default (status)
     workspace_parser.set_defaults(func=workspace_command, subcommand="status")
 
@@ -317,7 +318,7 @@ def main():
         return 1
 
     # Handle the case where func is not set for workspace without subcommand
-    if args.command == "workspace" and not hasattr(args, 'func'):
+    if args.command == "workspace" and not hasattr(args, "func"):
         args.func = workspace_command
 
     return args.func(args)
