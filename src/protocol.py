@@ -17,6 +17,7 @@ class MessageType(str, Enum):
 
 class TaskStatus(str, Enum):
     """Task status values."""
+    START = "start"
     EXECUTING = "executing"
     SUCCESS = "success"
     FAILED = "failed"

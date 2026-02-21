@@ -194,8 +194,8 @@ class Server:
 
     def handle_task(self, client, server, request: TaskRequest) -> None:
         """Handle a task request."""
-        # Send immediate acknowledgment
-        ack = create_task_response(request.id, TaskStatus.EXECUTING, "Task started")
+        # Send immediate acknowledgment with START status
+        ack = create_task_response(request.id, TaskStatus.START, "Task started")
         from websocket_server import WebsocketServer
         server.send_message(client, ack.to_json())
 

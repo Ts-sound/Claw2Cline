@@ -265,6 +265,19 @@ class ClientDaemon:
         except json.JSONDecodeError:
             return response_json
 
+    def notify_openclaw(self, message: str) -> None:
+        """Send notification to OpenClaw via agent command."""
+        import subprocess
+        try:
+            subprocess.run([
+                "openclaw", "agent", "--agent", "main", "--message", message
+            ], check=True)
+            logger.info(f"Sent notification to OpenClaw: {message}")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to send notification to OpenClaw: {e}")
+        except FileNotFoundError:
+            logger.error("openclaw command not found")
+
     def write_response_pipe(self, response: str) -> None:
         """Write response to response pipe in text format."""
         try:
@@ -293,18 +306,25 @@ class ClientDaemon:
 
                     if msg_type == MessageType.STATUS.value:
                         response = TaskResponse.from_dict(data)
+                        status = response.status
+                        task_id = response.id
+                        output = response.output
 
                         # Check if this is a final status (success or failed)
-                        if response.status in [TaskStatus.SUCCESS, TaskStatus.FAILED]:
+                        if status in [TaskStatus.SUCCESS, TaskStatus.FAILED]:
                             # Stop polling for this task since it's complete
-                            task_id = response.id
                             if task_id in self.active_tasks:
                                 del self.active_tasks[task_id]
                                 logger.info(f"Stopped polling for completed task: {task_id}")
-
-                        # Write to response pipe
-                        self.write_response_pipe(message)
-                        logger.info(f"Output: {data.get('output')}")
+                            
+                            # Notify OpenClaw with task output
+                            self.notify_openclaw(output)
+                        elif status == TaskStatus.START:
+                            # Notify OpenClaw that task started
+                            self.notify_openclaw(f"Task started: {task_id}")
+                        
+                        # Don't write task status to response pipe for async commands
+                        logger.info(f"Output: {output}")
                     elif msg_type == "workspace_status":
                         # Write workspace response to pipe
                         self.write_response_pipe(message)
