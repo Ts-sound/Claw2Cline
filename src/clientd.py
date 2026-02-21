@@ -207,7 +207,8 @@ class ClientDaemon:
                             # Build command with project info if specified
                             if project:
                                 # Pass project name to server for resolution
-                                full_command = f"cline -y -c \"{project}\" {command}"
+                                # Command must be quoted to preserve arguments
+                                full_command = f"cline -y -c \"{project}\" \"{command}\""
                             else:
                                 full_command = command
                             
