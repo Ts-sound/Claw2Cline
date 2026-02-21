@@ -18,6 +18,17 @@ Project is in the architecture migration phase. The focus is on migrating from a
 - 2026-02-19: Implemented ThreadPoolExecutor for concurrent task management
 - 2026-02-19: All async functions converted to thread-based concurrent operations
 - 2026-02-19: Fixed WebSocket server client handling for new threading architecture
+- 2026-02-21: **FIXED**: Remote access project path resolution issue
+  - CLI no longer validates project paths locally
+  - Project name is passed to server for resolution
+  - Server-side path validation enables seamless remote access
+  - Updated command format: `send [session] --project [project_name] [command]`
+- 2026-02-21: **IMPLEMENTED**: Server-side workspace and projects commands
+  - Added WORKSPACE_QUERY and PROJECTS_QUERY message types to protocol
+  - Server handles workspace status and project list queries
+  - Client daemon forwards workspace/projects commands to server
+  - CLI reads and displays server responses
+  - All workspace/project commands now execute on server for remote access support
 
 ## Next Steps
 

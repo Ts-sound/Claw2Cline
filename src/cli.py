@@ -40,40 +40,125 @@ def list_projects(workspace_dir=WORKSPACE_DIR):
 
 
 def workspace_command(args) -> int:
-    """Show workspace information."""
-    print(f"Workspace directory: {WORKSPACE_DIR}")
+    """Show workspace information by querying the server."""
+    request_pipe = config.request_pipe_path
+    response_pipe = config.response_pipe_path
+
+    # Check if pipes exist
+    if not request_pipe.exists():
+        logger.error(f"Request pipe not found: {request_pipe}")
+        logger.error("Is clientd running?")
+        return 1
+
+    try:
+        # Send workspace query to pipe
+        logger.info(f"Writing workspace query to request pipe: {request_pipe}")
+        with open(request_pipe, "w") as pipe:
+            pipe.write("workspace\n")
+            pipe.flush()
+        logger.info("Sent workspace query")
+    except Exception as e:
+        logger.error(f"Failed to write to request pipe: {e}")
+        return 1
+
+    # Wait for response with timeout
+    start_time = time.time()
+    while time.time() - start_time < DEFAULT_RESPONSE_TIMEOUT:
+        try:
+            with open(response_pipe, "r") as pipe:
+                response_data = pipe.read()
+                if response_data:
+                    # Parse the response
+                    try:
+                        response_json = json.loads(response_data.strip().split('\n')[0])
+                        msg_type = response_json.get('type', '')
+                        
+                        if msg_type == 'workspace_status':
+                            workspace_dir = response_json.get('workspace_dir', 'Unknown')
+                            exists = response_json.get('exists', False)
+                            projects_count = response_json.get('projects_count', 0)
+                            
+                            print(f"Workspace directory: {workspace_dir}")
+                            if exists:
+                                print(f"Status: Available")
+                                print(f"Projects found: {projects_count}")
+                            else:
+                                print(f"Status: Not found - {workspace_dir} does not exist")
+                            return 0
+                        else:
+                            logger.warning(f"Unexpected response type: {msg_type}")
+                    except json.JSONDecodeError:
+                        pass  # Continue waiting if JSON is malformed
+        except FileNotFoundError:
+            pass  # Continue waiting if pipe doesn't exist yet
+        except Exception as e:
+            logger.warning(f"Error reading response pipe: {e}")
+        
+        time.sleep(0.1)  # Short sleep to prevent busy waiting
     
-    if args.subcommand == "status" or not args.subcommand:
-        # Show workspace status
-        if os.path.exists(WORKSPACE_DIR):
-            print(f"Status: Available")
-            projects = list_projects()
-            print(f"Projects found: {len(projects)}")
-            if projects:
-                print("Projects:")
-                for project in projects:
-                    print(f"  - {project}")
-            else:
-                print("No projects detected in workspace")
-        else:
-            print(f"Status: Not found - {WORKSPACE_DIR} does not exist")
-    
-    return 0
+    logger.warning("Timeout waiting for workspace response")
+    return 1
 
 
 def projects_command(args) -> int:
-    """List projects in the workspace."""
-    projects = list_projects()
-    if projects:
-        print(f"Found {len(projects)} projects in workspace ({WORKSPACE_DIR}):")
-        for project in projects:
-            print(f"  - {project}")
-    else:
-        print(f"No projects found in workspace ({WORKSPACE_DIR})")
-        if not os.path.exists(WORKSPACE_DIR):
-            print(f"Warning: Workspace directory does not exist")
+    """List projects in the workspace by querying the server."""
+    request_pipe = config.request_pipe_path
+    response_pipe = config.response_pipe_path
+
+    # Check if pipes exist
+    if not request_pipe.exists():
+        logger.error(f"Request pipe not found: {request_pipe}")
+        logger.error("Is clientd running?")
+        return 1
+
+    try:
+        # Send projects query to pipe
+        logger.info(f"Writing projects query to request pipe: {request_pipe}")
+        with open(request_pipe, "w") as pipe:
+            pipe.write("projects\n")
+            pipe.flush()
+        logger.info("Sent projects query")
+    except Exception as e:
+        logger.error(f"Failed to write to request pipe: {e}")
+        return 1
+
+    # Wait for response with timeout
+    start_time = time.time()
+    while time.time() - start_time < DEFAULT_RESPONSE_TIMEOUT:
+        try:
+            with open(response_pipe, "r") as pipe:
+                response_data = pipe.read()
+                if response_data:
+                    # Parse the response
+                    try:
+                        response_json = json.loads(response_data.strip().split('\n')[0])
+                        msg_type = response_json.get('type', '')
+                        
+                        if msg_type == 'projects_list':
+                            workspace_dir = response_json.get('workspace_dir', 'Unknown')
+                            projects = response_json.get('projects', [])
+                            count = response_json.get('count', len(projects))
+                            
+                            if projects:
+                                print(f"Found {count} projects in workspace ({workspace_dir}):")
+                                for project in projects:
+                                    print(f"  - {project}")
+                            else:
+                                print(f"No projects found in workspace ({workspace_dir})")
+                            return 0
+                        else:
+                            logger.warning(f"Unexpected response type: {msg_type}")
+                    except json.JSONDecodeError:
+                        pass  # Continue waiting if JSON is malformed
+        except FileNotFoundError:
+            pass  # Continue waiting if pipe doesn't exist yet
+        except Exception as e:
+            logger.warning(f"Error reading response pipe: {e}")
+        
+        time.sleep(0.1)  # Short sleep to prevent busy waiting
     
-    return 0
+    logger.warning("Timeout waiting for projects response")
+    return 1
 
 
 def send_command(args) -> int:
@@ -87,14 +172,12 @@ def send_command(args) -> int:
         logger.error("Is clientd running?")
         return 1
 
-    # Build command - if project is specified, construct cline command with project directory
+    # Build command - if project is specified, pass project name to be resolved by server
+    # The server side will handle project path resolution and validation
     if hasattr(args, 'project') and args.project:
-        # Construct command in the format: cline -y -c "/path/to/project" "actual_command"
-        project_path = os.path.join(WORKSPACE_DIR, args.project)
-        if not os.path.exists(project_path):
-            logger.error(f"Project '{args.project}' does not exist in workspace: {project_path}")
-            return 1
-        message = f"send {args.session or 'default'} cline -y -c \"{project_path}\" \"{args.command}\""
+        # Pass project name to server for resolution
+        # Server will construct: cline -y -c "/path/to/project" "command"
+        message = f"send {args.session or 'default'} --project {args.project} {args.command}"
     else:
         # Regular command without project specification
         message = f"send"

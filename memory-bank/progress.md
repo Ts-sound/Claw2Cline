@@ -69,6 +69,24 @@
 - [x] Add project detection and validation
 - [x] Update documentation with new features
 
+### Phase 7b: Bug Fixes
+- [x] Fixed remote access project path resolution issue
+  - Problem: CLI was validating project paths locally, but workspace exists on server
+  - Solution: Pass project name to server for resolution instead of local validation
+  - Updated CLI to send: `send [session] --project [project_name] [command]`
+  - Updated clientd to parse --project flag and forward to server
+  - Server resolves full path in its workspace directory
+
+### Phase 7c: Server-Side Workspace Commands
+- [x] Implemented server-side workspace and projects commands
+  - Added WORKSPACE_QUERY and PROJECTS_QUERY message types to protocol.py
+  - Server handles workspace status queries (returns workspace_dir, exists, projects_count)
+  - Server handles projects list queries (returns workspace_dir, projects list, count)
+  - Client daemon forwards workspace/projects commands through WebSocket
+  - Client daemon writes server responses to response pipe
+  - CLI reads and displays server responses with timeout handling
+  - All workspace/project commands now execute on server for full remote access support
+
 ### Phase 8: Future Enhancements
 - [ ] Multi-cline agent cluster support
 - [ ] Task scheduling and load balancing

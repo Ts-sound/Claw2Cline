@@ -101,6 +101,30 @@ class ClientDaemon:
             logger.error(f"Failed to send status query for task {task_id}: {str(e)}")
             logger.debug(f"Status query payload: {status_query}", exc_info=True)
 
+    def send_workspace_query(self) -> None:
+        """Send workspace status query to server."""
+        try:
+            query = {"type": MessageType.WORKSPACE_QUERY.value}
+            if self.websocket:
+                self.websocket.send(json.dumps(query))
+                logger.info("Sent workspace query to server")
+            else:
+                logger.warning("Cannot send workspace query - WebSocket not connected")
+        except Exception as e:
+            logger.error(f"Failed to send workspace query: {str(e)}")
+
+    def send_projects_query(self) -> None:
+        """Send projects list query to server."""
+        try:
+            query = {"type": MessageType.PROJECTS_QUERY.value}
+            if self.websocket:
+                self.websocket.send(json.dumps(query))
+                logger.info("Sent projects query to server")
+            else:
+                logger.warning("Cannot send projects query - WebSocket not connected")
+        except Exception as e:
+            logger.error(f"Failed to send projects query: {str(e)}")
+
     def poll_task_status_thread(self, task_id: str) -> None:
         """Thread function to poll for task status every 2 seconds."""
         logger.info(f"Polling for status of task: {task_id}")
@@ -137,25 +161,61 @@ class ClientDaemon:
                         logger.info(f"Received from pipe: {line}")
 
                         # Parse the command
-                        # Format: "send [session] <command>"
-                        parts = line.split(maxsplit=2)
-                        if len(parts) < 2:
+                        # Format: "send [session] [--project project_name] <command>"
+                        # Or: "workspace" or "projects"
+                        parts = line.split(maxsplit=1)
+                        if len(parts) < 1:
                             logger.warning(f"Invalid command format: {line}")
                             continue
 
-                        if parts[0] == "send":
-                            if len(parts) == 2:
-                                session = "default"
-                                command = parts[1]
-                            else:
-                                session = parts[1]
-                                command = parts[2]
+                        # Handle workspace query
+                        if parts[0] == "workspace":
+                            self.send_workspace_query()
+                            continue
+                        
+                        # Handle projects query
+                        if parts[0] == "projects":
+                            self.send_projects_query()
+                            continue
 
+                        # Handle send command
+                        if parts[0] == "send":
+                            parts = line.split(maxsplit=3)
+                            if len(parts) < 2:
+                                logger.warning(f"Invalid command format: {line}")
+                                continue
+                            # Parse session, optional project, and command
+                            idx = 1
+                            session = "default"
+                            project = None
+                            
+                            # Check if next part is session or --project
+                            if idx < len(parts) and not parts[idx].startswith('--'):
+                                session = parts[idx]
+                                idx += 1
+                            
+                            # Check for --project flag
+                            if idx < len(parts) and parts[idx] == '--project':
+                                idx += 1
+                                if idx < len(parts):
+                                    project = parts[idx]
+                                    idx += 1
+                            
+                            # Get the command
+                            command = parts[idx] if idx < len(parts) else ""
+                            
+                            # Build command with project info if specified
+                            if project:
+                                # Pass project name to server for resolution
+                                full_command = f"cline -y -c \"{project}\" {command}"
+                            else:
+                                full_command = command
+                            
                             # Create and send task request
-                            request = create_task_request(command, session)
+                            request = create_task_request(full_command, session)
                             if self.websocket:
                                 self.websocket.send(request.to_json())
-                                logger.info(f"Sent task {request.id} to server")
+                                logger.info(f"Sent task {request.id} to server (project: {project})")
 
                                 # Start polling for this task's status
                                 self.start_task_polling(request.id)
@@ -203,9 +263,17 @@ class ClientDaemon:
                                 del self.active_tasks[task_id]
                                 logger.info(f"Stopped polling for completed task: {task_id}")
 
-                        # TODO: Write to response pipe
-                        # self.write_response_pipe(message)
+                        # Write to response pipe
+                        self.write_response_pipe(message)
                         logger.info(f"Output: {data.get('output')}")
+                    elif msg_type == 'workspace_status':
+                        # Write workspace response to pipe
+                        self.write_response_pipe(message)
+                        logger.info(f"Workspace status: {data}")
+                    elif msg_type == 'projects_list':
+                        # Write projects response to pipe
+                        self.write_response_pipe(message)
+                        logger.info(f"Projects list: {data}")
                     else:
                         logger.info(f"Received message type: {msg_type}")
 

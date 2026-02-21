@@ -12,6 +12,8 @@ class MessageType(str, Enum):
     STATUS = "status"
     HEARTBEAT = "heartbeat"
     GET_TASK_STATUS = "get_task_status"
+    WORKSPACE_QUERY = "workspace_query"
+    PROJECTS_QUERY = "projects_query"
 
 class TaskStatus(str, Enum):
     """Task status values."""

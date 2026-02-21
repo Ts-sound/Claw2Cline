@@ -97,10 +97,22 @@ claw2cline projects
 ### 4. Workspace and Project Management
 The system supports managing multiple projects in a workspace directory (`/opt/tong/ws/git-repo`):
 
-- **Workspace Command**: `claw2cline workspace` - Shows workspace status and available projects
-- **Projects Command**: `claw2cline projects` - Lists all projects detected in the workspace
+- **Workspace Command**: `claw2cline workspace` - Shows workspace status and available projects **from the server**
+- **Projects Command**: `claw2cline projects` - Lists all projects detected in the workspace **on the server**
 - **Project-Specific Execution**: Use `--project` or `-p` flag to execute commands in specific project directories
 - **Automatic Project Detection**: The system identifies projects by common indicators like `.git`, `README.md`, `package.json`, `setup.py`, etc.
+
+**Important Note for Remote Access**: All workspace and project commands are executed on the server side, not locally. This means:
+- `claw2cline workspace` queries the server for workspace information
+- `claw2cline projects` queries the server for project list
+- The `--project` flag passes only the project name to the server
+- The server resolves the full path in its workspace directory
+- This allows seamless remote access without requiring the same directory structure on the client machine
+
+Examples:
+- `claw2cline workspace` - Shows server's workspace status
+- `claw2cline projects` - Lists projects on the server
+- `claw2cline send -p Claw2Cline "summarize"` - Executes command in Claw2Cline project on server
 
 ### 4. Named Pipe Integration
 The client daemon creates named pipes for seamless integration:

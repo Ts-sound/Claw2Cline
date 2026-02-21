@@ -24,6 +24,23 @@ logger = logging.getLogger(__name__)
 # Default workspace directory
 WORKSPACE_DIR = "/opt/tong/ws/git-repo"
 
+def list_projects(workspace_dir=WORKSPACE_DIR):
+    """List all projects in the workspace directory."""
+    import os
+    if not os.path.exists(workspace_dir):
+        return []
+    
+    projects = []
+    for item in os.listdir(workspace_dir):
+        item_path = os.path.join(workspace_dir, item)
+        if os.path.isdir(item_path):
+            # Check if it looks like a project directory (has common project files)
+            project_indicators = ['.git', 'README.md', 'package.json', 'setup.py', 'requirements.txt', 'pyproject.toml']
+            if any(os.path.exists(os.path.join(item_path, indicator)) for indicator in project_indicators):
+                projects.append(item)
+    
+    return sorted(projects)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -156,12 +173,41 @@ class Server:
                 server.send_message(client, json.dumps({"type": "heartbeat", "status": "ok"}))
             elif msg_type == MessageType.GET_TASK_STATUS.value:
                 self.handle_get_task_status(client, server, data)
+            elif msg_type == MessageType.WORKSPACE_QUERY.value:
+                self.handle_workspace_query(client, server)
+            elif msg_type == MessageType.PROJECTS_QUERY.value:
+                self.handle_projects_query(client, server)
             else:
                 logger.warning(f"Unknown message type: {msg_type}")
         except json.JSONDecodeError:
             logger.error(f"Invalid JSON: {message}")
         except Exception as e:
             logger.error(f"Error handling message: {e}")
+
+    def handle_workspace_query(self, client, server) -> None:
+        """Handle workspace status query."""
+        from websocket_server import WebsocketServer
+        workspace_info = {
+            "type": "workspace_status",
+            "workspace_dir": WORKSPACE_DIR,
+            "exists": os.path.exists(WORKSPACE_DIR),
+            "projects_count": len(list_projects())
+        }
+        server.send_message(client, json.dumps(workspace_info))
+        logger.info(f"Sent workspace info: {workspace_info}")
+
+    def handle_projects_query(self, client, server) -> None:
+        """Handle projects list query."""
+        from websocket_server import WebsocketServer
+        projects = list_projects()
+        projects_info = {
+            "type": "projects_list",
+            "workspace_dir": WORKSPACE_DIR,
+            "projects": projects,
+            "count": len(projects)
+        }
+        server.send_message(client, json.dumps(projects_info))
+        logger.info(f"Sent projects info: {projects_info}")
 
     def handle_task(self, client, server, request: TaskRequest) -> None:
         """Handle a task request."""
