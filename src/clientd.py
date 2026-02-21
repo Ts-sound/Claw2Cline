@@ -78,10 +78,10 @@ class ClientDaemon:
                 self.websocket = websocket.WebSocket()
                 self.websocket.connect(server_url)
                 logger.info("Connected to server")
-                
+
                 # Query workspace directory from server
                 self.send_workspace_query()
-                
+
                 # Wait for workspace response (with timeout)
                 start_time = time.time()
                 while time.time() - start_time < 5 and not self.workspace_dir:
@@ -91,10 +91,10 @@ class ClientDaemon:
                         self.workspace_dir = data.get("workspace_dir", "")
                         logger.info(f"Got workspace directory from server: {self.workspace_dir}")
                         break
-                
+
                 if not self.workspace_dir:
                     logger.warning("Failed to get workspace directory from server")
-                
+
                 return
             except Exception as e:
                 logger.error(f"Failed to connect to server (attempt {attempt + 1}/{max_retries}): {e}")
@@ -254,24 +254,12 @@ class ClientDaemon:
                 logger.error(f"Error reading request pipe: {e}")
                 time.sleep(1)
 
-    def response_to_text(self, response_json: str) -> str:
-        """Convert JSON response to text format with newlines."""
-        try:
-            data = json.loads(response_json)
-            lines = []
-            for key, value in data.items():
-                lines.append(f"{key}: {value}")
-            return "\n".join(lines)
-        except json.JSONDecodeError:
-            return response_json
-
     def notify_openclaw(self, message: str) -> None:
         """Send notification to OpenClaw via agent command."""
         import subprocess
+
         try:
-            subprocess.run([
-                "openclaw", "agent", "--agent", "main", "--message", message
-            ], check=True)
+            subprocess.run(["openclaw", "agent", "--agent", "main", "--message", message], check=True)
             logger.info(f"Sent notification to OpenClaw: {message}")
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to send notification to OpenClaw: {e}")
@@ -279,12 +267,10 @@ class ClientDaemon:
             logger.error("openclaw command not found")
 
     def write_response_pipe(self, response: str) -> None:
-        """Write response to response pipe in text format."""
+        """Write response to response pipe. Response should already be in text format."""
         try:
-            # Convert JSON to text format
-            text_response = self.response_to_text(response)
             with open(self.response_pipe, "w") as pipe:
-                pipe.write(text_response + "\n")
+                pipe.write(response + "\n")
                 pipe.flush()
             logger.info(f"Wrote response to pipe")
         except Exception as e:
@@ -316,21 +302,19 @@ class ClientDaemon:
                             if task_id in self.active_tasks:
                                 del self.active_tasks[task_id]
                                 logger.info(f"Stopped polling for completed task: {task_id}")
-                            
+
                             # Notify OpenClaw with task output
                             self.notify_openclaw(output)
                         elif status == TaskStatus.START:
                             # Notify OpenClaw that task started
                             self.notify_openclaw(f"Task started: {task_id}")
-                        
+
                         # Don't write task status to response pipe for async commands
                         logger.info(f"Output: {output}")
                     elif msg_type == "workspace_status":
-                        # Write workspace response to pipe
                         self.write_response_pipe(message)
                         logger.info(f"Workspace status: {data}")
                     elif msg_type == "projects_list":
-                        # Write projects response to pipe
                         self.write_response_pipe(message)
                         logger.info(f"Projects list: {data}")
                     else:
