@@ -196,54 +196,49 @@ def send_command(args) -> int:
         logger.error(f"Failed to write to request pipe: {e}")
         return 1
 
-    # If --wait flag is set, wait for response
-    if args.wait:
-        logger.info("Waiting for task completion...")
+    # Wait for task completion (synchronous mode)
+    logger.info("Waiting for task completion...")
 
-        # Clear any old responses in the pipe
+    # Clear any old responses in the pipe
+    try:
+        with open(response_pipe, "r") as pipe:
+            # Try to read any existing content to clear the pipe
+            try:
+                pipe.read()
+            except:
+                pass
+    except:
+        pass  # Ignore if pipe is empty or doesn't exist yet
+
+    # Wait for response with timeout
+    start_time = time.time()
+    while time.time() - start_time < DEFAULT_RESPONSE_TIMEOUT * 12:  # Extended timeout for long tasks
         try:
             with open(response_pipe, "r") as pipe:
-                # Try to read any existing content to clear the pipe
-                try:
-                    pipe.read()
-                except:
-                    pass
-        except:
-            pass  # Ignore if pipe is empty or doesn't exist yet
+                response_data = pipe.read()
+                if response_data:
+                    # Parse the response
+                    try:
+                        response_json = json.loads(response_data.strip().split("\n")[0])
+                        status = response_json.get("status", "")
+                        output = response_json.get("output", "")
 
-        # Wait for response with timeout
-        start_time = time.time()
-        while time.time() - start_time < DEFAULT_RESPONSE_TIMEOUT:
-            try:
-                with open(response_pipe, "r") as pipe:
-                    response_data = pipe.read()
-                    if response_data:
-                        # Parse the response
-                        import json
+                        if status in ["success", "failed"]:
+                            print(f"Task completed with status: {status}")
+                            if output:
+                                print(f"Output: {output}")
+                            return 0 if status == "success" else 1
+                    except json.JSONDecodeError:
+                        pass  # Continue waiting if JSON is malformed
+        except FileNotFoundError:
+            pass  # Continue waiting if pipe doesn't exist yet
+        except Exception as e:
+            logger.warning(f"Error reading response pipe: {e}")
 
-                        try:
-                            response_json = json.loads(response_data.strip().split("\n")[0])
-                            status = response_json.get("status", "")
-                            output = response_json.get("output", "")
+        time.sleep(0.1)  # Short sleep to prevent busy waiting
 
-                            if status in ["success", "failed"]:
-                                print(f"Task completed with status: {status}")
-                                if output:
-                                    print(f"Output: {output}")
-                                return 0 if status == "success" else 1
-                        except json.JSONDecodeError:
-                            pass  # Continue waiting if JSON is malformed
-            except FileNotFoundError:
-                pass  # Continue waiting if pipe doesn't exist yet
-            except Exception as e:
-                logger.warning(f"Error reading response pipe: {e}")
-
-            time.sleep(0.1)  # Short sleep to prevent busy waiting
-
-        logger.warning("Timeout waiting for response")
-        return 1
-
-    return 0
+    logger.warning("Timeout waiting for response")
+    return 1
 
 
 def status_command(args) -> int:
@@ -289,7 +284,6 @@ def main():
     send_parser = subparsers.add_parser("send", help="Send a task to Cline")
     send_parser.add_argument("command", help="Task command to send")
     send_parser.add_argument("--session", "-s", default=None, help="Session name (default: default)")
-    send_parser.add_argument("--wait", "-w", action="store_true", help="Wait for task completion")
     send_parser.add_argument("--project", "-p", help="Project name to execute command in")
     send_parser.set_defaults(func=send_command)
 

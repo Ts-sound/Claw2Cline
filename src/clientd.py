@@ -31,8 +31,8 @@ class ClientDaemon:
         self.request_pipe: Path = config.request_pipe_path
         self.response_pipe: Path = config.response_pipe_path
         self.pid_file: Path = config.pid_file_path
-        self.active_tasks = {}  # Track active tasks that need polling
         self.workspace_dir: str = ""  # Workspace directory from server
+        self.active_tasks: dict = {}  # Track active tasks for status polling
         logger.info("ClientDaemon initialized")
 
     def setup(self) -> None:
@@ -106,19 +106,6 @@ class ClientDaemon:
                     logger.error("Max retries reached, giving up")
                     raise
 
-    def send_status_query(self, task_id: str) -> None:
-        """Send a status query for a specific task."""
-        try:
-            status_query = {"type": MessageType.GET_TASK_STATUS.value, "task_id": task_id, "timestamp": int(time.time())}
-            if self.websocket:
-                self.websocket.send(json.dumps(status_query))
-                logger.info(f"Status query sent - Task: {task_id}, Time: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}")
-            else:
-                logger.warning(f"Cannot send status query - WebSocket not connected for task: {task_id}")
-        except Exception as e:
-            logger.error(f"Failed to send status query for task {task_id}: {str(e)}")
-            logger.debug(f"Status query payload: {status_query}", exc_info=True)
-
     def send_workspace_query(self) -> None:
         """Send workspace status query to server."""
         try:
@@ -142,24 +129,6 @@ class ClientDaemon:
                 logger.warning("Cannot send projects query - WebSocket not connected")
         except Exception as e:
             logger.error(f"Failed to send projects query: {str(e)}")
-
-    def poll_task_status_thread(self, task_id: str) -> None:
-        """Thread function to poll for task status every 5 seconds."""
-        logger.info(f"Polling for status of task: {task_id}")
-        while self.running and task_id in self.active_tasks:
-            time.sleep(5)  # Poll every 5 seconds
-            self.send_status_query(task_id)
-
-    def start_task_polling(self, task_id: str) -> None:
-        """Start polling for a specific task's status."""
-        logger.info(f"Starting polling for task: {task_id}")
-        if task_id not in self.active_tasks:
-            self.active_tasks[task_id] = True
-            # Start the polling thread in the background
-            poll_thread = threading.Thread(target=self.poll_task_status_thread, args=(task_id,))
-            poll_thread.daemon = True
-            poll_thread.start()
-            logger.info(f"Started polling thread for task: {task_id}")
 
     def read_request_pipe(self) -> None:
         """Read from request pipe and send to WebSocket."""
@@ -242,9 +211,6 @@ class ClientDaemon:
                             if self.websocket:
                                 self.websocket.send(request.to_json())
                                 logger.info(f"Sent task {request.id} to server (project: {project})")
-
-                                # Start polling for this task's status
-                                self.start_task_polling(request.id)
                         else:
                             logger.warning(f"Unknown command: {parts[0]}")
             except FileNotFoundError:
@@ -253,18 +219,6 @@ class ClientDaemon:
             except Exception as e:
                 logger.error(f"Error reading request pipe: {e}")
                 time.sleep(1)
-
-    def notify_openclaw(self, message: str) -> None:
-        """Send notification to OpenClaw via agent command."""
-        import subprocess
-
-        try:
-            subprocess.run(["openclaw", "agent", "--agent", "main", "--message", message], check=True)
-            logger.info(f"Sent notification to OpenClaw: {message}")
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to send notification to OpenClaw: {e}")
-        except FileNotFoundError:
-            logger.error("openclaw command not found")
 
     def write_response_pipe(self, response: str) -> None:
         """Write response to response pipe. Response should already be in text format."""
@@ -296,20 +250,16 @@ class ClientDaemon:
                         task_id = response.id
                         output = response.output
 
-                        # Check if this is a final status (success or failed)
-                        if status in [TaskStatus.SUCCESS, TaskStatus.FAILED]:
-                            # Stop polling for this task since it's complete
+                        # Track task status for polling
+                        if status == TaskStatus.START:
+                            self.active_tasks[task_id] = True
+                        elif status in [TaskStatus.SUCCESS, TaskStatus.FAILED]:
                             if task_id in self.active_tasks:
                                 del self.active_tasks[task_id]
-                                logger.info(f"Stopped polling for completed task: {task_id}")
 
-                            # Notify OpenClaw with task output
-                            self.notify_openclaw(output)
-                        elif status == TaskStatus.START:
-                            # Notify OpenClaw that task started
-                            self.notify_openclaw(f"Task started: {task_id}")
-
-                        # Don't write task status to response pipe for async commands
+                        # Write all status responses to pipe for synchronous operation
+                        # text_response = self.response_to_text(message)
+                        self.write_response_pipe(message)
                         logger.info(f"Output: {output}")
                     elif msg_type == "workspace_status":
                         self.write_response_pipe(message)
